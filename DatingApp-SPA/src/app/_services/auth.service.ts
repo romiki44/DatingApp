@@ -19,7 +19,7 @@ export class AuthService {
           localStorage.setItem('token', user.token);
         }
       })
-    )
+    );
   }
 
   register(model: any) {
