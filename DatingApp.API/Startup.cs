@@ -20,6 +20,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using DatingApp.API.Helpers;
 using AutoMapper;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Dating.API
 {
@@ -35,10 +36,13 @@ namespace Dating.API
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddDbContext<DataContext>(x=>x.UseSqlite(Configuration.GetConnectionString("DefaultConnection")));
+            services.AddDbContext<DataContext>(x => x
+                .UseMySql(Configuration.GetConnectionString("DefaultConnection"))
+                .ConfigureWarnings(warning => warning.Ignore(CoreEventId.IncludeIgnoredWarning)));
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1)
-                .AddJsonOptions(opt=>{
-                    opt.SerializerSettings.ReferenceLoopHandling=Newtonsoft.Json.ReferenceLoopHandling.Ignore;
+                .AddJsonOptions(opt =>
+                {
+                    opt.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
                 });
             services.AddCors();
             services.Configure<CloudinarySettings>(Configuration.GetSection("CloudinarySettings"));
@@ -47,14 +51,46 @@ namespace Dating.API
             services.AddScoped<IAuthRepository, AuthRepository>();
             services.AddScoped<IDatingRepository, DatingRepository>();
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-                .AddJwtBearer(options=>{
-                    options.TokenValidationParameters=new TokenValidationParameters {
-                        ValidateIssuerSigningKey=true,
-                        IssuerSigningKey=new SymmetricSecurityKey(Encoding.ASCII.GetBytes(
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(
                             Configuration.GetSection("AppSettings:Token").Value
                         )),
-                        ValidateIssuer=false,
-                        ValidateAudience=false
+                        ValidateIssuer = false,
+                        ValidateAudience = false
+                    };
+                });
+            services.AddScoped<LogUserActivity>();
+        }
+
+        public void ConfigureDevelopmentServices(IServiceCollection services)
+        {
+            services.AddDbContext<DataContext>(x => x.UseSqlite(Configuration.GetConnectionString("DefaultConnection")));
+            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1)
+                .AddJsonOptions(opt =>
+                {
+                    opt.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
+                });
+            services.AddCors();
+            services.Configure<CloudinarySettings>(Configuration.GetSection("CloudinarySettings"));
+            services.AddAutoMapper();
+            services.AddTransient<Seed>();
+            services.AddScoped<IAuthRepository, AuthRepository>();
+            services.AddScoped<IDatingRepository, DatingRepository>();
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(
+                            Configuration.GetSection("AppSettings:Token").Value
+                        )),
+                        ValidateIssuer = false,
+                        ValidateAudience = false
                     };
                 });
             services.AddScoped<LogUserActivity>();
@@ -70,12 +106,15 @@ namespace Dating.API
             }
             else
             {
-                app.UseExceptionHandler(builder => {
-                    builder.Run(async context => {
-                        context.Response.StatusCode= (int) HttpStatusCode.InternalServerError;
+                app.UseExceptionHandler(builder =>
+                {
+                    builder.Run(async context =>
+                    {
+                        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-                        var error=context.Features.Get<IExceptionHandlerFeature>();
-                        if(error != null) {
+                        var error = context.Features.Get<IExceptionHandlerFeature>();
+                        if (error != null)
+                        {
                             context.Response.AddApplicationError(error.Error.Message);
                             await context.Response.WriteAsync(error.Error.Message);
                         }
@@ -86,9 +125,17 @@ namespace Dating.API
 
             //app.UseHttpsRedirection();
             //seeder.SeedUsers();
-            app.UseCors(x=>x.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+            app.UseCors(x => x.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
             app.UseAuthentication();
-            app.UseMvc();
+            app.UseDefaultFiles();
+            app.UseStaticFiles();
+            app.UseMvc(routes =>
+            {
+                routes.MapSpaFallbackRoute(
+                    name: "spa-fallback",
+                    defaults: new { controller = "Fallback", action = "Index" }
+                );
+            });
         }
     }
 }
